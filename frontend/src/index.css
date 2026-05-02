@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: theme(colors.parchment);
+  color: theme(colors.ink);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
