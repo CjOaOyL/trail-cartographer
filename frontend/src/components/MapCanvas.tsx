@@ -32,7 +32,7 @@ export function MapCanvas() {
       {baseSvg && (
         <svg
           ref={svgRef}
-          viewBox="0 0 1000 700"
+          viewBox="0 0 1100 860"
           className="mx-auto block w-full max-w-5xl bg-parchment shadow"
           onClick={onClick}
         >
