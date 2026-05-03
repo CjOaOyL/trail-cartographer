@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MapCanvas } from "./components/MapCanvas";
+import { MapLibreCanvas } from "./components/MapLibreCanvas";
 import { SymbolPalette } from "./components/SymbolPalette";
 import { Toolbar } from "./components/Toolbar";
 import { AIChat } from "./components/AIChat";
@@ -28,7 +28,7 @@ export default function App() {
       <div className="flex flex-1 min-h-0">
         <SymbolPalette />
         <main className="flex-1 min-w-0">
-          <MapCanvas />
+          <MapLibreCanvas />
         </main>
         <AIChat />
       </div>

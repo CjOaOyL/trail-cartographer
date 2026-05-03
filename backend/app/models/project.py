@@ -30,6 +30,7 @@ class Project(BaseModel):
     name: str
     source_file: str
     bbox: tuple[float, float, float, float]
+    geo_bbox: tuple[float, float, float, float] | None = None
     elevation_profile: list[float] = Field(default_factory=list)
     symbols: list[PlacedSymbol] = Field(default_factory=list)
     custom_symbols: list[Symbol] = Field(default_factory=list)

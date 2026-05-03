@@ -22,10 +22,14 @@ from app.core import geodata
 from app.core.gpx import parse_gpx
 from app.models.project import Project
 
-# Render canvas (SVG viewBox dimensions)
+# Render canvas (SVG viewBox dimensions). PAD=0 so the SVG content fills the
+# canvas exactly: (0,0)..(W,H) in pixel space corresponds to the geographic
+# bbox returned alongside the SVG. This lets the frontend overlay it on a
+# MapLibre map by computing the bbox's screen pixel rect and stretching the
+# SVG to fit. ROT must stay 0 for that geo-alignment to work.
 W, H = 1100, 860
-PAD = 72
-ROT_DEFAULT = 0  # no rotation by default; user can override per project later
+PAD = 0
+ROT_DEFAULT = 0
 MARGIN_DEFAULT = 0.014  # extra lat/lon degrees beyond trail bbox per side
 ELE_COLS, ELE_ROWS = 36, 28
 NLCD_PX = 70
@@ -301,16 +305,19 @@ def _det_shuffle(lst: list, seed: int) -> list:
 
 
 # ─── Public API ────────────────────────────────────────────────────────────
-def render_base_map(project: Project) -> str:
-    """Render the project's base SVG by fetching geodata and assembling the scene.
+def render_base_map(project: Project) -> tuple[str, tuple[float, float, float, float]]:
+    """Render the project's base SVG and return (svg, geo_bbox).
 
-    Returns the full <svg>…</svg> as a string with viewBox 0 0 W H.
+    geo_bbox is (lon_min, lat_min, lon_max, lat_max) — the geographic extent
+    the SVG viewBox covers exactly. The frontend uses it to anchor the SVG
+    as an overlay on a slippy map.
     """
     project_dir = settings.projects_dir / project.id
     gpx_path = next(project_dir.glob("source.*"), None)
     if gpx_path is None or gpx_path.suffix.lower() != ".gpx":
         # Fallback for non-GPX inputs (KML/GeoJSON not yet implemented)
-        return _placeholder_svg(project)
+        bbox = project.bbox
+        return _placeholder_svg(project), bbox
 
     track = parse_gpx(gpx_path)
     gpx_pts = track.points
@@ -323,16 +330,17 @@ def render_base_map(project: Project) -> str:
         min(lons) - MARGIN_DEFAULT,
         max(lons) + MARGIN_DEFAULT,
     )
-    api_bbox = (bb_geo[2], bb_geo[0], bb_geo[3], bb_geo[1])  # (lon_min, lat_min, lon_max, lat_max)
+    geo_bbox = (bb_geo[2], bb_geo[0], bb_geo[3], bb_geo[1])  # (lon_min, lat_min, lon_max, lat_max)
 
     xform, _ = make_transform(bb_geo, ROT_DEFAULT)
 
-    ele_data = geodata.fetch_elevation_grid(api_bbox, ELE_COLS, ELE_ROWS)
-    nlcd_data = geodata.fetch_nlcd(api_bbox, NLCD_PX)
-    osm_data = geodata.fetch_osm(api_bbox)
-    parcel_data = geodata.fetch_parcels(api_bbox)
+    ele_data = geodata.fetch_elevation_grid(geo_bbox, ELE_COLS, ELE_ROWS)
+    nlcd_data = geodata.fetch_nlcd(geo_bbox, NLCD_PX)
+    osm_data = geodata.fetch_osm(geo_bbox)
+    parcel_data = geodata.fetch_parcels(geo_bbox)
 
-    return _compose_svg(project, gpx_pts, ele_data, nlcd_data, osm_data, parcel_data, bb_geo, xform)
+    svg = _compose_svg(project, gpx_pts, ele_data, nlcd_data, osm_data, parcel_data, bb_geo, xform)
+    return svg, geo_bbox
 
 
 def _placeholder_svg(project: Project) -> str:
@@ -526,19 +534,6 @@ def _compose_svg(
     sx, sy = trail_xy[0] if trail_xy else (W / 2, H / 2)
     ex, ey = trail_xy[-1] if trail_xy else (W / 2, H / 2)
 
-    # Stats / overlays
-    lo_ft = min_e * 3.28084
-    hi_ft = max_e * 3.28084
-    gain_ft = hi_ft - lo_ft
-
-    grad_x, grad_y, grad_w, grad_h = W - 185, 14, 165, 12
-    grad_cells = "".join(
-        f'<rect x="{grad_x + i * grad_w // 20}" y="{grad_y}" width="{grad_w // 20 + 1}" height="{grad_h}" '
-        f'fill="#{_ele_color(i / 19)[0]:02x}{_ele_color(i / 19)[1]:02x}{_ele_color(i / 19)[2]:02x}"/>'
-        for i in range(20)
-    )
-    comp = _compass_rose(W - 75, H - 78)
-
     NL = "\n"
     ele_cells_s = NL.join(ele_cells)
     nlcd_cells_s = NL.join(nlcd_cells)
@@ -549,7 +544,7 @@ def _compose_svg(
     building_svgs_s = NL.join(building_svgs)
     peak_svgs_s = NL.join(peak_svgs)
 
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}">
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="100%" height="100%" preserveAspectRatio="none">
 <defs>
   <filter id="blur-ele" x="-8%" y="-8%" width="116%" height="116%">
     <feGaussianBlur stdDeviation="14"/>
@@ -561,30 +556,38 @@ def _compose_svg(
   <filter id="shadow">
     <feDropShadow dx="1" dy="2" stdDeviation="2.5" flood-opacity="0.45"/>
   </filter>
-  <clipPath id="mapclip"><rect x="0" y="0" width="{W}" height="{H}"/></clipPath>
 </defs>
 
-<g filter="url(#blur-ele)" clip-path="url(#mapclip)">
+<g id="layer-elevation" data-layer="elevation" filter="url(#blur-ele)">
 {ele_cells_s}
 </g>
 
-<g filter="url(#lc-tex)" clip-path="url(#mapclip)">
+<g id="layer-nlcd" data-layer="nlcd" filter="url(#lc-tex)">
 {nlcd_cells_s}
 </g>
 
-<g clip-path="url(#mapclip)">
+<g id="layer-parcels" data-layer="parcels">
 {parcel_svgs_s}
 </g>
 
+<g id="layer-water" data-layer="water">
 {water_svgs_s}
 {water_labels_s}
+</g>
 
+<g id="layer-trees" data-layer="trees">
 {tree_svgs_s}
+</g>
 
+<g id="layer-buildings" data-layer="buildings">
 {building_svgs_s}
+</g>
 
+<g id="layer-peaks" data-layer="peaks">
 {peak_svgs_s}
+</g>
 
+<g id="layer-trail" data-layer="trail">
 <path d="{trail_path}" fill="none" stroke="white" stroke-width="9" stroke-linecap="round" opacity="0.35"/>
 <path d="{trail_path}" fill="none" stroke="#e05010" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)"/>
 <path d="{trail_path}" fill="none" stroke="#ff8840" stroke-width="1.8" stroke-dasharray="1,14" stroke-linecap="round" opacity="0.8"/>
@@ -596,21 +599,7 @@ def _compose_svg(
 <circle cx="{ex:.0f}" cy="{ey:.0f}" r="12" fill="#e74c3c" stroke="white" stroke-width="2.8" filter="url(#shadow)"/>
 <text x="{ex:.0f}" y="{ey+4:.0f}" text-anchor="middle" font-size="14" fill="white">×</text>
 <text x="{ex:.0f}" y="{ey+26:.0f}" text-anchor="middle" font-size="10" fill="#4a0a08" font-weight="bold" stroke="white" stroke-width="3" paint-order="stroke">End</text>
-
-<rect x="0" y="0" width="{W}" height="36" fill="rgba(40,25,10,0.72)"/>
-<text x="{W/2:.0f}" y="22" text-anchor="middle" font-size="16" fill="white"
-  font-family="Georgia,serif" letter-spacing="2" font-weight="bold">{project.name}</text>
-
-<rect x="{grad_x-8}" y="{grad_y-2}" width="{grad_w+16}" height="44" rx="5"
-  fill="rgba(255,255,255,0.82)" stroke="#ccc" stroke-width="1"/>
-{grad_cells}
-<text x="{grad_x}" y="{grad_y+25}" font-size="9" fill="#555" font-family="monospace">{lo_ft:.0f} ft</text>
-<text x="{grad_x+grad_w}" y="{grad_y+25}" font-size="9" fill="#555" font-family="monospace" text-anchor="end">{hi_ft:.0f} ft</text>
-<text x="{grad_x+grad_w//2}" y="{grad_y+38}" font-size="9" fill="#666" font-family="monospace" text-anchor="middle">▲ {gain_ft:.0f} ft gain</text>
-
-{comp}
-
-<rect x="2" y="2" width="{W-4}" height="{H-4}" fill="none" stroke="#7a5030" stroke-width="2.5" rx="5"/>
+</g>
 </svg>"""
 
 

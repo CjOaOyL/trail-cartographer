@@ -31,7 +31,8 @@ export function Toolbar() {
       const p = await uploadGpx(file);
       setProject(p);
       setLoadStage("rendering");
-      await renderProject(p.id);
+      const rendered = await renderProject(p.id);
+      setProject(rendered);  // now has geo_bbox
       setLoadStage("loading-svg");
       const r = await fetch(svgUrl(p.id));
       setBaseSvg(await r.text());

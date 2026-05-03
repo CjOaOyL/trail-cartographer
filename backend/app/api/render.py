@@ -10,17 +10,20 @@ from app.models.project import Project
 router = APIRouter()
 
 
-@router.post("/{project_id}")
-def render_project(project_id: str) -> dict[str, str]:
+@router.post("/{project_id}", response_model=Project)
+def render_project(project_id: str) -> Project:
     m = _manifest_path(project_id)
     if not m.exists():
         raise HTTPException(404, "Project not found")
     project = Project(**json.loads(m.read_text()))
 
-    svg = render_base_map(project)
+    svg, geo_bbox = render_base_map(project)
     svg_path = _project_dir(project_id) / "base.svg"
     svg_path.write_text(svg, encoding="utf-8")
-    return {"status": "rendered", "svg_path": str(svg_path)}
+
+    project.geo_bbox = geo_bbox
+    m.write_text(project.model_dump_json(indent=2))
+    return project
 
 
 @router.get("/{project_id}/svg")

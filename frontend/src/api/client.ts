@@ -5,6 +5,7 @@ export interface Project {
   name: string;
   source_file: string;
   bbox: [number, number, number, number];
+  geo_bbox?: [number, number, number, number] | null;
   elevation_profile: number[];
   symbols: PlacedSymbol[];
   custom_symbols: Symbol[];
@@ -41,9 +42,10 @@ export async function uploadGpx(file: File): Promise<Project> {
   return r.json();
 }
 
-export async function renderProject(projectId: string): Promise<void> {
+export async function renderProject(projectId: string): Promise<Project> {
   const r = await fetch(`${BASE}/api/render/${projectId}`, { method: "POST" });
   if (!r.ok) throw new Error(`render failed: ${r.status}`);
+  return r.json();
 }
 
 export function svgUrl(projectId: string): string {
