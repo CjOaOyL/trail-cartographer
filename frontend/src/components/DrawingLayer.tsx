@@ -1,35 +1,55 @@
-import { useEditor } from "../store/editor";
-import { useMarkup, type MarkupPath } from "../hooks/useMarkup";
+import { useState } from "react";
+import { useEditor, type MarkupPath } from "../store/editor";
 
 interface Props {
   width: number;
   height: number;
-  onSubmit?(path: MarkupPath): void;
 }
 
-export function DrawingLayer({ width, height, onSubmit }: Props) {
+export function DrawingLayer({ width, height }: Props) {
   const tool = useEditor((s) => s.tool);
-  const { drawing, path, start, extend, finish } = useMarkup();
+  const setPendingMarkup = useEditor((s) => s.setPendingMarkup);
+  const [drawing, setDrawing] = useState(false);
+  const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
 
   if (tool !== "draw") return null;
 
+  function svgPoint(target: SVGGraphicsElement, clientX: number, clientY: number) {
+    const svg = target.ownerSVGElement!;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const m = target.getScreenCTM();
+    return m ? pt.matrixTransform(m.inverse()) : pt;
+  }
+
   const onDown = (e: React.PointerEvent<SVGRectElement>) => {
-    e.preventDefault();
-    start(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+    e.stopPropagation();
+    const p = svgPoint(e.currentTarget, e.clientX, e.clientY);
+    setDrawing(true);
+    setPoints([{ x: p.x, y: p.y }]);
+    e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onMove = (e: React.PointerEvent<SVGRectElement>) => {
     if (!drawing) return;
-    extend(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+    const p = svgPoint(e.currentTarget, e.clientX, e.clientY);
+    setPoints((prev) => [...prev, { x: p.x, y: p.y }]);
   };
-  const onUp = () => {
-    const finished = finish();
-    if (finished) onSubmit?.(finished);
+  const onUp = (e: React.PointerEvent<SVGRectElement>) => {
+    if (!drawing) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    setDrawing(false);
+    if (points.length >= 3) {
+      const path: MarkupPath = { points };
+      setPendingMarkup(path);
+    }
+    setPoints([]);
   };
 
-  const d = path?.points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" ");
+  const d = points.map((p, i) => `${i ? "L" : "M"} ${p.x.toFixed(0)} ${p.y.toFixed(0)}`).join(" ");
 
   return (
-    <g>
+    <g style={{ pointerEvents: "all" }}>
       <rect
         x={0}
         y={0}
@@ -39,9 +59,20 @@ export function DrawingLayer({ width, height, onSubmit }: Props) {
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
+        onPointerCancel={onUp}
         style={{ cursor: "crosshair" }}
       />
-      {d && <path d={d} fill="rgba(255,180,0,0.18)" stroke="#e08a2a" strokeWidth={1.5} />}
+      {d && (
+        <path
+          d={d}
+          fill="rgba(255,180,0,0.18)"
+          stroke="#e08a2a"
+          strokeWidth={1.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          pointerEvents="none"
+        />
+      )}
     </g>
   );
 }

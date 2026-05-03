@@ -75,3 +75,35 @@ export async function saveProject(project: Project): Promise<Project> {
   if (!r.ok) throw new Error(`save failed: ${r.status}`);
   return r.json();
 }
+
+export interface EditOp {
+  op: "move" | "remove" | "replace" | "add" | "recolor";
+  symbol_id?: string | null;
+  instance_id?: string | null;
+  dx?: number | null;
+  dy?: number | null;
+  x?: number | null;
+  y?: number | null;
+  svg?: string | null;
+  new_symbol_svg?: string | null;
+  fill?: string | null;
+  stroke?: string | null;
+  name?: string | null;
+}
+
+export interface MarkupRequest {
+  project_id: string;
+  description: string;
+  polygon: [number, number][];
+  symbols_in_region: { instance_id: string; symbol_id: string; x: number; y: number }[];
+}
+
+export async function interpretMarkup(req: MarkupRequest): Promise<{ ops: EditOp[] }> {
+  const r = await fetch(`${BASE}/api/markup/interpret`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!r.ok) throw new Error(`markup interpret failed: ${r.status}`);
+  return r.json();
+}

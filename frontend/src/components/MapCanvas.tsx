@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useEditor } from "../store/editor";
 import { useDraggable } from "../hooks/useDraggable";
+import { DrawingLayer } from "./DrawingLayer";
 
 export function MapCanvas() {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -52,6 +53,7 @@ export function MapCanvas() {
               />
             );
           })}
+          <DrawingLayer width={1100} height={860} />
         </svg>
       )}
     </div>

@@ -1,7 +1,11 @@
 import { create } from "zustand";
-import type { PlacedSymbol, Project, Symbol } from "../api/client";
+import type { EditOp, PlacedSymbol, Project, Symbol } from "../api/client";
 
 type Tool = "select" | "place" | "draw";
+
+export interface MarkupPath {
+  points: { x: number; y: number }[];
+}
 
 interface EditorState {
   project: Project | null;
@@ -11,6 +15,8 @@ interface EditorState {
   tool: Tool;
   selectedSymbolId: string | null;
   selectedInstanceId: string | null;
+  pendingMarkup: MarkupPath | null;
+  pendingOps: EditOp[] | null;
 
   setProject(p: Project | null): void;
   setBaseSvg(svg: string | null): void;
@@ -22,6 +28,9 @@ interface EditorState {
   placeInstance(p: PlacedSymbol): void;
   moveInstance(instanceId: string, x: number, y: number): void;
   removeInstance(instanceId: string): void;
+  setPendingMarkup(p: MarkupPath | null): void;
+  setPendingOps(ops: EditOp[] | null): void;
+  applyOp(op: EditOp): void;
 }
 
 export const useEditor = create<EditorState>((set) => ({
@@ -32,6 +41,8 @@ export const useEditor = create<EditorState>((set) => ({
   tool: "select",
   selectedSymbolId: null,
   selectedInstanceId: null,
+  pendingMarkup: null,
+  pendingOps: null,
 
   setProject: (project) => set({ project }),
   setBaseSvg: (baseSvg) => set({ baseSvg }),
@@ -71,4 +82,63 @@ export const useEditor = create<EditorState>((set) => ({
           }
         : {},
     ),
+  setPendingMarkup: (pendingMarkup) => set({ pendingMarkup }),
+  setPendingOps: (pendingOps) => set({ pendingOps }),
+  applyOp: (op) =>
+    set((state) => {
+      if (!state.project) return {};
+      const symbols = state.project.symbols;
+      switch (op.op) {
+        case "add": {
+          if (op.x == null || op.y == null || !op.svg) return {};
+          const newSym: Symbol = {
+            id: `gen_${Date.now()}`,
+            name: op.name ?? "Custom",
+            svg: op.svg,
+            generated: true,
+          };
+          return {
+            customSymbols: [...state.customSymbols, newSym],
+            project: {
+              ...state.project,
+              symbols: [
+                ...symbols,
+                {
+                  instance_id: crypto.randomUUID(),
+                  symbol_id: newSym.id,
+                  x: op.x,
+                  y: op.y,
+                  rotation: 0,
+                  scale: 1,
+                },
+              ],
+            },
+          };
+        }
+        case "move": {
+          if (!op.instance_id || op.dx == null || op.dy == null) return {};
+          return {
+            project: {
+              ...state.project,
+              symbols: symbols.map((s) =>
+                s.instance_id === op.instance_id
+                  ? { ...s, x: s.x + op.dx!, y: s.y + op.dy! }
+                  : s,
+              ),
+            },
+          };
+        }
+        case "remove": {
+          if (!op.instance_id) return {};
+          return {
+            project: {
+              ...state.project,
+              symbols: symbols.filter((s) => s.instance_id !== op.instance_id),
+            },
+          };
+        }
+        default:
+          return {};
+      }
+    }),
 }));
