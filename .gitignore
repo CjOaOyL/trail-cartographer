@@ -31,8 +31,9 @@ yarn-error.log*
 pnpm-debug.log*
 
 # Project data (user uploads, generated maps, geodata cache)
-backend/data/
-backend/cache/
+# Match anywhere in the tree (defends against path-resolution bugs)
+**/data/
+**/cache/
 
 # OS / editors
 .DS_Store

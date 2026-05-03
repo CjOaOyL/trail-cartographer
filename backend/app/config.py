@@ -2,6 +2,11 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Anchor the default data dir to the backend package, not the process CWD,
+# so it ends up in the same place regardless of where uvicorn was launched.
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent  # …/backend
+_DEFAULT_DATA = _BACKEND_ROOT / "data"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -10,7 +15,7 @@ class Settings(BaseSettings):
     claude_model: str = "claude-sonnet-4-6"
     backend_host: str = "127.0.0.1"
     backend_port: int = 8000
-    data_dir: Path = Path("./backend/data")
+    data_dir: Path = _DEFAULT_DATA
 
     @property
     def projects_dir(self) -> Path:
