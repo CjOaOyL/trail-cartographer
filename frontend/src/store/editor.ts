@@ -2,6 +2,13 @@ import { create } from "zustand";
 import type { EditOp, PlacedSymbol, Project, Symbol } from "../api/client";
 
 type Tool = "select" | "place" | "draw";
+export type LoadStage =
+  | "idle"
+  | "uploading"
+  | "rendering"
+  | "loading-svg"
+  | "ready"
+  | "error";
 
 export interface MarkupPath {
   points: { x: number; y: number }[];
@@ -17,6 +24,8 @@ interface EditorState {
   selectedInstanceId: string | null;
   pendingMarkup: MarkupPath | null;
   pendingOps: EditOp[] | null;
+  loadStage: LoadStage;
+  loadError: string | null;
 
   setProject(p: Project | null): void;
   setBaseSvg(svg: string | null): void;
@@ -31,6 +40,7 @@ interface EditorState {
   setPendingMarkup(p: MarkupPath | null): void;
   setPendingOps(ops: EditOp[] | null): void;
   applyOp(op: EditOp): void;
+  setLoadStage(stage: LoadStage, error?: string | null): void;
 }
 
 export const useEditor = create<EditorState>((set) => ({
@@ -43,6 +53,8 @@ export const useEditor = create<EditorState>((set) => ({
   selectedInstanceId: null,
   pendingMarkup: null,
   pendingOps: null,
+  loadStage: "idle",
+  loadError: null,
 
   setProject: (project) => set({ project }),
   setBaseSvg: (baseSvg) => set({ baseSvg }),
@@ -84,6 +96,7 @@ export const useEditor = create<EditorState>((set) => ({
     ),
   setPendingMarkup: (pendingMarkup) => set({ pendingMarkup }),
   setPendingOps: (pendingOps) => set({ pendingOps }),
+  setLoadStage: (loadStage, loadError = null) => set({ loadStage, loadError }),
   applyOp: (op) =>
     set((state) => {
       if (!state.project) return {};
